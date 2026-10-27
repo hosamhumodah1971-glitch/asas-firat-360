@@ -1,0 +1,94 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FIRAT | 360° Viewer</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f4f7fa;color:#172638}
+.viewer{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.panel{width:min(100%,1100px);background:white;border-radius:22px;padding:24px;box-shadow:0 15px 50px #17263815;text-align:center}
+h1{margin:0 0 8px;font-size:clamp(25px,4vw,42px)}
+.subtitle{color:#66788a;margin-bottom:16px}
+.stage{position:relative;width:100%;aspect-ratio:1.6;background:#fff;border-radius:16px;overflow:hidden;cursor:grab;touch-action:none;user-select:none}
+.stage:active{cursor:grabbing}
+.stage img{width:100%;height:100%;object-fit:contain;pointer-events:none;-webkit-user-drag:none}
+.loading{position:absolute;inset:0;display:grid;place-items:center;background:#ffffffd9;font-weight:bold}
+.hint{font-size:14px;color:#64748b;margin:15px 0}
+.controls{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+button{border:1px solid #d9e1eb;background:white;padding:12px 20px;border-radius:10px;cursor:pointer;font-weight:bold}
+button:hover{background:#f0f5fa}
+.counter{font-size:13px;color:#64748b;margin-top:15px}
+@media(max-width:600px){.viewer{padding:10px}.panel{padding:14px}.stage{aspect-ratio:1.15}}
+</style>
+</head>
+<body>
+<main class="viewer">
+<section class="panel">
+<h1>FIRAT 360°</h1>
+<div class="subtitle">استكشف فرن الدهان من جميع الزوايا</div>
+<div class="stage" id="stage">
+<img id="frame" src="d_001.jpg" alt="FIRAT Spray Booth">
+<div class="loading" id="loading">جاري تجهيز العرض...</div>
+</div>
+<p class="hint">اسحب الصورة يمين ويسار أو فوق وتحت لاستكشاف الفرن</p>
+<div class="controls">
+<button id="left">◀ تدوير</button>
+<button id="auto">⟳ دوران تلقائي</button>
+<button id="right">تدوير ▶</button>
+</div>
+<div class="counter" id="counter">الصورة 1 / 722</div>
+</section>
+</main>
+<script>
+const TOTAL=722;
+const stage=document.getElementById('stage');
+const frame=document.getElementById('frame');
+const loading=document.getElementById('loading');
+const counter=document.getElementById('counter');
+const autoBtn=document.getElementById('auto');
+let index=1, dragging=false,lastX=0,lastY=0,accX=0,accY=0,timer=null;
+const columns=38,rows=19;
+function filename(n){return 'd_'+String(n).padStart(3,'0')+'.jpg'}
+function show(n){
+ index=((n-1+TOTAL)%TOTAL)+1;
+ frame.src=filename(index);
+ counter.textContent='الصورة '+index+' / '+TOTAL;
+}
+frame.addEventListener('load',()=>loading.style.display='none');
+frame.addEventListener('error',()=>{loading.textContent='تعذر تحميل الصورة: '+filename(index)});
+function move(dx,dy){
+ accX+=dx;accY+=dy;
+ let stepsX=Math.trunc(accX/9),stepsY=Math.trunc(accY/15);
+ if(stepsX||stepsY){
+  accX-=stepsX*9;accY-=stepsY*15;
+  let x=(index-1)%columns,y=Math.floor((index-1)/columns);
+  x=((x-stepsX)%columns+columns)%columns;
+  y=Math.max(0,Math.min(rows-1,y-stepsY));
+  show(y*columns+x+1);
+ }
+}
+stage.addEventListener('pointerdown',e=>{
+ dragging=true;lastX=e.clientX;lastY=e.clientY;
+ stage.setPointerCapture(e.pointerId);stopAuto();
+});
+stage.addEventListener('pointermove',e=>{
+ if(!dragging)return;
+ move(e.clientX-lastX,e.clientY-lastY);
+ lastX=e.clientX;lastY=e.clientY;
+});
+stage.addEventListener('pointerup',()=>dragging=false);
+stage.addEventListener('pointercancel',()=>dragging=false);
+function stopAuto(){clearInterval(timer);timer=null;autoBtn.textContent='⟳ دوران تلقائي'}
+document.getElementById('left').onclick=()=>{stopAuto();show(index-1)};
+document.getElementById('right').onclick=()=>{stopAuto();show(index+1)};
+autoBtn.onclick=()=>{
+ if(timer){stopAuto();return}
+ timer=setInterval(()=>show(index%columns===0?index-columns+1:index+1),100);
+ autoBtn.textContent='إيقاف الدوران';
+};
+</script>
+</body>
+</html>
