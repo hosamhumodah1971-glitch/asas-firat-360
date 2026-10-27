@@ -4,61 +4,49 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FIRAT | 360° Viewer</title>
+<title>FIRAT | Interactive 360°</title>
 
 <style>
-*{box-sizing:border-box}
+*{
+  box-sizing:border-box;
+}
 
-html,body{
-  margin:0;
+html,
+body{
   width:100%;
-  min-height:100%;
+  height:100%;
+  margin:0;
+  padding:0;
+  overflow:hidden;
+  background:transparent!important;
 }
 
 body{
   font-family:Arial,sans-serif;
-  background:#f4f7fa;
-  color:#172638;
 }
 
 .viewer{
-  min-height:100vh;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:16px;
-}
-
-.panel{
-  width:min(100%,1100px);
-  background:#fff;
-  border-radius:22px;
-  padding:clamp(14px,3vw,28px);
-  box-shadow:0 15px 50px #17263815;
-  text-align:center;
-}
-
-h1{
-  margin:0 0 8px;
-  font-size:clamp(25px,4vw,42px);
-}
-
-.subtitle{
-  color:#66788a;
-  margin-bottom:16px;
+  position:relative;
+  width:100%;
+  height:100%;
+  margin:0;
+  padding:0;
+  background:transparent;
+  overflow:hidden;
 }
 
 .stage{
-  position:relative;
+  position:absolute;
+  inset:0;
   width:100%;
-  aspect-ratio:1.6;
-  background:#fff;
-  border-radius:16px;
+  height:100%;
   overflow:hidden;
+  background:transparent;
   cursor:grab;
   touch-action:none;
   user-select:none;
   -webkit-user-select:none;
+  -webkit-tap-highlight-color:transparent;
 }
 
 .stage:active{
@@ -68,54 +56,40 @@ h1{
 .stage img{
   position:absolute;
   inset:0;
+  display:block;
   width:100%;
   height:100%;
   object-fit:contain;
+  object-position:center;
   pointer-events:none;
+  user-select:none;
   -webkit-user-drag:none;
 }
 
 .loading{
   position:absolute;
-  inset:0;
-  display:grid;
-  place-items:center;
-  background:#ffffffeb;
-  font-weight:bold;
+  left:50%;
+  bottom:12%;
+  transform:translateX(-50%);
+  padding:9px 15px;
+  border-radius:30px;
+  background:#102d46d9;
+  color:#fff;
+  font-size:12px;
+  text-align:center;
+  white-space:nowrap;
   z-index:2;
 }
 
-.hint{
-  font-size:14px;
-  color:#64748b;
-  margin:15px 0;
-}
-
-.controls{
-  display:flex;
-  gap:10px;
-  justify-content:center;
-  flex-wrap:wrap;
-}
-
-button{
-  border:1px solid #d9e1eb;
-  background:#fff;
-  padding:12px 20px;
-  border-radius:10px;
-  cursor:pointer;
-  font-weight:bold;
-}
-
-button:hover{
-  background:#f0f5fa;
+.loading[hidden]{
+  display:none!important;
 }
 
 @media(max-width:600px){
-  .viewer{padding:8px}
-  .panel{padding:12px;border-radius:14px}
-  .stage{aspect-ratio:1.15}
-  .controls button{padding:11px 13px}
+  .loading{
+    bottom:8%;
+    font-size:11px;
+  }
 }
 </style>
 </head>
@@ -123,305 +97,303 @@ button:hover{
 <body>
 
 <main class="viewer">
-<section class="panel">
-
-<h1>FIRAT 360°</h1>
-
-<div class="subtitle">
-استكشف فرن الدهان من جميع الزوايا
-</div>
-
-<div class="stage" id="stage">
-  <img
-    id="frame"
-    src="d_001.jpg"
-    alt="FIRAT Spray Booth"
-    draggable="false"
-    fetchpriority="high"
+  <div
+    class="stage"
+    id="stage"
+    aria-label="عارض فرن FIRAT تفاعلي 360 درجة"
   >
-  <div class="loading" id="loading">
-    جاري تجهيز العرض...
+    <img
+      id="frame"
+      src="d_001.jpg"
+      alt="فرن دهان FIRAT"
+      draggable="false"
+      fetchpriority="high"
+    >
+
+    <div class="loading" id="loading">
+      جاري تجهيز العرض...
+    </div>
   </div>
-</div>
-
-<p class="hint">
-اسحب يمين ويسار لتدوير الفرن
-</p>
-
-<div class="controls">
-  <button type="button" id="left">◀ يسار</button>
-  <button type="button" id="auto">إيقاف الدوران</button>
-  <button type="button" id="right">يمين ▶</button>
-</div>
-
-</section>
 </main>
 
 <script>
 (() => {
-"use strict";
+  "use strict";
 
-const TOTAL = 722;
-const AUTO_SPEED = 100;
-const RESUME_DELAY = 2000;
-const DRAG_SENSITIVITY = 12;
-const PRELOAD_AHEAD = 30;
-const PRELOAD_BEHIND = 8;
-const MAX_CONCURRENT = 4;
+  const TOTAL = 722;
 
-const stage = document.getElementById("stage");
-const frame = document.getElementById("frame");
-const loading = document.getElementById("loading");
-const autoBtn = document.getElementById("auto");
+  // سرعة الدوران التلقائي
+  const AUTO_SPEED = 100;
 
-let current = 1;
-let desired = 1;
-let dragging = false;
-let lastX = 0;
-let accumulated = 0;
+  // الرجوع للدوران بعد ترك الفرن
+  const RESUME_DELAY = 2000;
 
-let autoTimer = null;
-let resumeTimer = null;
-let manualPause = false;
-let pendingRender = false;
+  // حساسية السحب
+  const DRAG_SENSITIVITY = 12;
 
-const cache = new Map();
-const queue = [];
-const queued = new Set();
-let activeLoads = 0;
+  // التحميل المسبق
+  const PRELOAD_AHEAD = 35;
+  const PRELOAD_BEHIND = 8;
+  const MAX_CONCURRENT = 4;
 
-function normalize(n){
-  return ((n - 1) % TOTAL + TOTAL) % TOTAL + 1;
-}
+  const stage = document.getElementById("stage");
+  const frame = document.getElementById("frame");
+  const loading = document.getElementById("loading");
 
-function filename(n){
-  return "d_" + String(normalize(n)).padStart(3,"0") + ".jpg";
-}
+  let current = 1;
+  let desired = 1;
 
-function pump(){
-  while(activeLoads < MAX_CONCURRENT && queue.length){
-    const n = queue.shift();
-    queued.delete(n);
+  let dragging = false;
+  let lastX = 0;
+  let accumulated = 0;
+
+  let autoTimer = null;
+  let resumeTimer = null;
+  let pendingRender = false;
+
+  const cache = new Map();
+  const queue = [];
+  const queued = new Set();
+
+  let activeLoads = 0;
+
+  function normalize(n){
+    return ((n - 1) % TOTAL + TOTAL) % TOTAL + 1;
+  }
+
+  function filename(n){
+    return "d_" +
+      String(normalize(n)).padStart(3,"0") +
+      ".jpg";
+  }
+
+  function pump(){
+    while(activeLoads < MAX_CONCURRENT && queue.length){
+
+      const n = queue.shift();
+      queued.delete(n);
+
+      const item = cache.get(n);
+
+      if(!item || item.state !== "queued"){
+        continue;
+      }
+
+      item.state = "loading";
+      activeLoads++;
+
+      const img = new Image();
+      item.img = img;
+
+      img.onload = () => {
+        item.state = "ready";
+        activeLoads--;
+
+        requestRender();
+        pump();
+      };
+
+      img.onerror = () => {
+        item.state = "failed";
+        activeLoads--;
+        pump();
+      };
+
+      img.src = filename(n);
+    }
+  }
+
+  function requestImage(n, priority = false){
+    n = normalize(n);
 
     let item = cache.get(n);
-    if(!item || item.state !== "queued") continue;
 
-    item.state = "loading";
-    activeLoads++;
+    if(item){
+      if(priority && item.state === "queued"){
+        const pos = queue.indexOf(n);
 
-    const img = new Image();
-    item.img = img;
-
-    img.onload = () => {
-      item.state = "ready";
-      activeLoads--;
-      requestRender();
-      pump();
-    };
-
-    img.onerror = () => {
-      item.state = "failed";
-      activeLoads--;
-      pump();
-    };
-
-    img.src = filename(n);
-  }
-}
-
-function requestImage(n,priority=false){
-  n = normalize(n);
-
-  let item = cache.get(n);
-
-  if(item){
-    if(priority && item.state === "queued"){
-      const pos = queue.indexOf(n);
-      if(pos !== -1){
-        queue.splice(pos,1);
-        queue.unshift(n);
+        if(pos !== -1){
+          queue.splice(pos,1);
+          queue.unshift(n);
+        }
       }
+
+      return item;
     }
+
+    item = {
+      state:"queued",
+      img:null
+    };
+
+    cache.set(n,item);
+
+    if(!queued.has(n)){
+      if(priority){
+        queue.unshift(n);
+      }else{
+        queue.push(n);
+      }
+
+      queued.add(n);
+    }
+
+    pump();
     return item;
   }
 
-  item = {state:"queued",img:null};
-  cache.set(n,item);
+  function requestRender(){
+    if(pendingRender) return;
 
-  if(!queued.has(n)){
-    if(priority) queue.unshift(n);
-    else queue.push(n);
-    queued.add(n);
+    pendingRender = true;
+    requestAnimationFrame(render);
   }
 
-  pump();
-  return item;
-}
+  function render(){
+    pendingRender = false;
 
-function requestRender(){
-  if(pendingRender) return;
-  pendingRender = true;
-  requestAnimationFrame(render);
-}
+    const item = cache.get(desired);
 
-function render(){
-  pendingRender = false;
-  const item = cache.get(desired);
+    if(item && item.state === "ready"){
+      current = desired;
 
-  if(item && item.state === "ready"){
-    current = desired;
-    frame.src = item.img.src;
-    loading.style.display = "none";
-  }
-}
+      if(frame.src !== item.img.src){
+        frame.src = item.img.src;
+      }
 
-function preloadAround(n){
-  for(let i=1;i<=PRELOAD_AHEAD;i++){
-    requestImage(n+i);
-  }
-
-  for(let i=1;i<=PRELOAD_BEHIND;i++){
-    requestImage(n-i);
-  }
-}
-
-function show(n){
-  desired = normalize(n);
-  requestImage(desired,true);
-  preloadAround(desired);
-  requestRender();
-}
-
-function step(amount){
-  show(desired+amount);
-}
-
-function stopAuto(){
-  if(autoTimer !== null){
-    clearInterval(autoTimer);
-    autoTimer = null;
-  }
-  autoBtn.textContent = "⟳ تشغيل الدوران";
-}
-
-function startAuto(){
-  clearTimeout(resumeTimer);
-
-  if(dragging || manualPause || autoTimer !== null) return;
-
-  autoTimer = setInterval(()=>{
-    if(document.hidden) return;
-
-    // لا نتقدم قبل تجهيز الإطار التالي
-    const next = normalize(current+1);
-    const item = requestImage(next,true);
-
-    preloadAround(current);
-
-    if(item.state === "ready"){
-      desired = next;
-      requestRender();
+      loading.hidden = true;
     }
-  },AUTO_SPEED);
-
-  autoBtn.textContent = "إيقاف الدوران";
-}
-
-function scheduleResume(){
-  clearTimeout(resumeTimer);
-  if(manualPause) return;
-
-  resumeTimer = setTimeout(()=>{
-    if(!dragging) startAuto();
-  },RESUME_DELAY);
-}
-
-stage.addEventListener("pointerdown",e=>{
-  dragging = true;
-  lastX = e.clientX;
-  accumulated = 0;
-
-  clearTimeout(resumeTimer);
-  stopAuto();
-
-  stage.setPointerCapture(e.pointerId);
-});
-
-stage.addEventListener("pointermove",e=>{
-  if(!dragging) return;
-
-  accumulated += e.clientX-lastX;
-  lastX = e.clientX;
-
-  const steps = Math.trunc(accumulated/DRAG_SENSITIVITY);
-
-  if(steps){
-    accumulated -= steps*DRAG_SENSITIVITY;
-    step(-steps);
   }
-});
 
-function endDrag(){
-  if(!dragging) return;
-  dragging = false;
-  scheduleResume();
-}
+  function preloadAround(n){
+    for(let i = 1; i <= PRELOAD_AHEAD; i++){
+      requestImage(n + i);
+    }
 
-stage.addEventListener("pointerup",endDrag);
-stage.addEventListener("pointercancel",endDrag);
-stage.addEventListener("lostpointercapture",endDrag);
+    for(let i = 1; i <= PRELOAD_BEHIND; i++){
+      requestImage(n - i);
+    }
+  }
 
-document.getElementById("left").onclick=()=>{
-  clearTimeout(resumeTimer);
-  stopAuto();
-  step(-1);
-  scheduleResume();
-};
+  function show(n){
+    desired = normalize(n);
 
-document.getElementById("right").onclick=()=>{
-  clearTimeout(resumeTimer);
-  stopAuto();
-  step(1);
-  scheduleResume();
-};
+    requestImage(desired,true);
+    preloadAround(desired);
+    requestRender();
+  }
 
-autoBtn.onclick=()=>{
-  clearTimeout(resumeTimer);
+  function step(amount){
+    show(desired + amount);
+  }
 
-  if(autoTimer !== null){
-    manualPause = true;
+  function stopAuto(){
+    if(autoTimer !== null){
+      clearInterval(autoTimer);
+      autoTimer = null;
+    }
+  }
+
+  function startAuto(){
+    clearTimeout(resumeTimer);
+
+    if(dragging || autoTimer !== null){
+      return;
+    }
+
+    autoTimer = setInterval(() => {
+      if(document.hidden) return;
+
+      const next = normalize(current + 1);
+      const item = requestImage(next,true);
+
+      preloadAround(current);
+
+      if(item.state === "ready"){
+        desired = next;
+        requestRender();
+      }
+
+    }, AUTO_SPEED);
+  }
+
+  function scheduleResume(){
+    clearTimeout(resumeTimer);
+
+    resumeTimer = setTimeout(() => {
+      if(!dragging){
+        desired = current;
+        startAuto();
+      }
+    }, RESUME_DELAY);
+  }
+
+  stage.addEventListener("pointerdown", e => {
+    if(dragging) return;
+
+    dragging = true;
+    lastX = e.clientX;
+    accumulated = 0;
+
+    clearTimeout(resumeTimer);
     stopAuto();
-  }else{
-    manualPause = false;
-    startAuto();
+
+    stage.setPointerCapture(e.pointerId);
+  });
+
+  stage.addEventListener("pointermove", e => {
+    if(!dragging) return;
+
+    accumulated += e.clientX - lastX;
+    lastX = e.clientX;
+
+    const steps = Math.trunc(
+      accumulated / DRAG_SENSITIVITY
+    );
+
+    if(steps !== 0){
+      accumulated -= steps * DRAG_SENSITIVITY;
+      step(-steps);
+    }
+  });
+
+  function endDrag(){
+    if(!dragging) return;
+
+    dragging = false;
+    scheduleResume();
   }
-};
 
-frame.addEventListener("load",()=>{
-  loading.style.display="none";
-});
+  stage.addEventListener("pointerup",endDrag);
+  stage.addEventListener("pointercancel",endDrag);
+  stage.addEventListener("lostpointercapture",endDrag);
 
-frame.addEventListener("error",()=>{
-  loading.textContent="تعذر تحميل صورة الفرن";
-  loading.style.display="grid";
-});
+  frame.addEventListener("load", () => {
+    loading.hidden = true;
+  });
 
-document.addEventListener("visibilitychange",()=>{
-  if(document.hidden){
-    if(autoTimer !== null) clearInterval(autoTimer);
-    autoTimer = null;
-  }else if(!dragging && !manualPause){
-    startAuto();
-  }
-});
+  frame.addEventListener("error", () => {
+    loading.textContent = "تعذر تحميل صورة الفرن";
+    loading.hidden = false;
+  });
 
-// أول صورة
-requestImage(1,true);
-preloadAround(1);
-show(1);
+  document.addEventListener("visibilitychange", () => {
+    if(document.hidden){
+      stopAuto();
+      clearTimeout(resumeTimer);
+    }else if(!dragging){
+      desired = current;
+      startAuto();
+    }
+  });
 
-// يبدأ الدوران تلقائياً
-startAuto();
+  // تجهيز العرض
+  requestImage(1,true);
+  preloadAround(1);
+  show(1);
+
+  // دوران تلقائي
+  startAuto();
 
 })();
 </script>
